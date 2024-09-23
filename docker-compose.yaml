@@ -1,0 +1,120 @@
+version: '3.9'
+services:
+  rabbitmq:
+    image: rabbitmq:4-alpine
+    ports:
+      - 5672:5672
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: pass
+    healthcheck:
+      test: rabbitmq-diagnostics -q status
+      interval: 1s
+      timeout: 30s
+      retries: 10
+    volumes:
+      - rabbitmq_data:/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - 6379:6379
+    volumes:
+      - redis_data:/data
+  
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - 5440:5432
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: triple_backend
+      POSTGRES_PASSWORD: pass
+    volumes:
+      - postgres_data:/data
+  
+  # mongodb:
+  #   # image: mongodb/mongodb-community-server:6.0-ubi8
+  #   environment:
+  #     MONGO_INITDB_ROOT_USERNAME: root
+  #     MONGO_INITDB_ROOT_PASSWORD: rootpassword
+  #     MONGO_INITDB_DATABASE: sgame
+  #   ports:
+  #     - 27017:27017
+  #   volumes:
+  #     - mongodb_data:/data
+  
+  proxy:
+    build:
+      context: .
+      dockerfile: apps/proxy/Dockerfile
+    init: true
+    ports:
+      - 3000:3000
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      # mongodb:
+    environment:
+      PORT: 3000
+      THROTTLE_TTL_SEC: 10
+      THROTTLE_LIMIT: 10
+      JWT_SECRET: blabla
+      JWT_EXPIRES_IN: 600s
+      RABBIT_MQ_URL: 'amqp://admin:pass@rabbitmq:5672'
+      RABBIT_MQ_READ_QUEUE: read_queue
+      RABBIT_MQ_WRITE_QUEUE: write_queue
+      # MONGO_DB_NAME: sgame
+      # MONGO_CONN: mongodb://root:rootpassword@mongodb:27017/sgame?authSource=admin
+
+  read:
+    build:
+      context: .
+      dockerfile: apps/read/Dockerfile
+    init: true
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      postgres:
+        condition: service_started
+
+    environment:
+      RABBIT_MQ_URL: 'amqp://admin:pass@rabbitmq:5672'
+      RABBIT_MQ_QUEUE: read_queue
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 0
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: triple_backend
+      DB_USER: postgres
+      DB_PASSWORD: pass
+
+  write:
+    build:
+      context: .
+      dockerfile: apps/write/Dockerfile
+    init: true
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      postgres:
+        condition: service_started
+    environment:
+      RABBIT_MQ_URL: 'amqp://admin:pass@rabbitmq:5672'
+      RABBIT_MQ_READ_QUEUE: read_queue
+      RABBIT_MQ_QUEUE: write_queue
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: triple_backend
+      DB_USER: postgres
+      DB_PASSWORD: pass
+    
+
+volumes:
+  rabbitmq_data:
+  redis_data:
+  postgres_data:
+  # mongodb_data:
