@@ -14,6 +14,7 @@ Simple user/post application divided into 3 microservices:
 - **JWT**-based auth
 - **Rate Limiting**
 - **docker** and **docker-compose** for containerization
+- **Swagger** for documenting api endpoints
 
 ## Run the project
 ```bash
